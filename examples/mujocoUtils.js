@@ -3,12 +3,6 @@ import { Reflector  } from './utils/Reflector.js';
 import { MuJoCoDemo } from './main.js';
 
 export async function reloadFunc() {
-  // if (this.training) {
-  //   this.stopTraining();
-  // }
-  // if (this.simulation) {
-  //   this.simulation.free();
-  // }
   this.scene.remove(this.scene.getObjectByName("MuJoCo Root"));
   [this.model, this.state, this.simulation, this.bodies, this.lights] =
     await loadSceneFromURL(this.mujoco, this.params.scene, this);

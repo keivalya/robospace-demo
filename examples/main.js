@@ -142,8 +142,9 @@ export class MuJoCoDemo {
       verbose:             1
     });
 
-    const chunkSize = this.agent.config.nSteps;
+    const chunkSize = 1; // this.agent.config.nSteps;
     for (let ep = 1; ep <= this.params.episodes && this.training; ep++) {
+      if (!this.training) break;
       await this.agent.learn({ 
         totalTimesteps: chunkSize,
       });
@@ -159,7 +160,6 @@ export class MuJoCoDemo {
   
     this.training = false;
   }
-  
     
   stopTraining() {
     this.training = false;
