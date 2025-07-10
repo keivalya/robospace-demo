@@ -4,7 +4,6 @@ import { OrbitControls    } from '../node_modules/three/examples/jsm/controls/Or
 import { DragStateManager } from './utils/DragStateManager.js';
 import { setupGUI, downloadExampleScenesFolder, loadSceneFromURL, getPosition, getQuaternion, toMujocoPos, standardNormal } from './mujocoUtils.js';
 import   load_mujoco        from '../dist/mujoco_wasm.js';
-import { MujocoEnv }       from '../src/MujocoEnv.js';
 
 // Load the MuJoCo Module
 const mujoco = await load_mujoco();
@@ -49,17 +48,22 @@ export class MuJoCoDemo {
     });
 
     // Define Random State Variables
-    this.params = {scene: initialScene, paused: false, help: false };
+    this.params = {
+      scene: initialScene, 
+      paused: false, 
+      help: false,
+      ctrlnoiserate: 0.0,
+      ctrlnoisestd: 0.0 
+    };
     this.mujoco_time = 0.0;
     this.bodies  = {}, this.lights = {};
     this.tmpVec  = new THREE.Vector3();
     this.tmpQuat = new THREE.Quaternion();
     this.updateGUICallbacks = [];
 
-    this.training   = false;
-    this.env        = null;
-    this.agent      = null;
-    this.trainStats = [];
+    // Joint control
+    this.selectedJoint = 0;
+    this.jointSpeed = 0.5;
 
     this.container = document.createElement( 'div' );
     document.body.appendChild( this.container );
@@ -83,7 +87,7 @@ export class MuJoCoDemo {
     this.renderer.setPixelRatio( window.devicePixelRatio );
     this.renderer.setSize( window.innerWidth, window.innerHeight );
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // default THREE.PCFShadowMap
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.setAnimationLoop( this.render.bind(this) );
 
     this.container.appendChild( this.renderer.domElement );
@@ -101,68 +105,83 @@ export class MuJoCoDemo {
 
     // Initialize the Drag State Manager.
     this.dragStateManager = new DragStateManager(this.scene, this.renderer, this.camera, this.container.parentElement, this.controls);
+    
+    // Setup keyboard controls
+    this.setupKeyboardControls();
   }
 
   async init() {
-    // Download the the examples to MuJoCo's virtual file system
-    // await downloadExampleScenesFolder(mujoco);
-
     // Initialize the three.js Scene using the .xml Model in initialScene
     [this.model, this.state, this.simulation, this.bodies, this.lights] =  
       await loadSceneFromURL(mujoco, initialScene, this);
 
-    this.env   = new MujocoEnv(this);
-    this.agent = null;
-
     this.gui = new GUI();
     setupGUI(this);
-
-    // try loading a saved policy:
-    // try {
-    //   this.policy = await tf.loadLayersModel('indexeddb://my-walk-policy');
-    //   console.log('Loaded saved policy, skipping training');
-    // } catch {
-    //   console.log('No saved policy found—will train from scratch');
-    // }
   }
 
-  async startTraining() {
-    if (this.training) return;
-    this.training = true;
-  
-    this.env   = new MujocoEnv(this);
-    this.agent = new PPO(this.env, {
-      nSteps:              2048,
-      nEpochs:             10,
-      policyLearningRate:  1e-4,
-      valueLearningRate:   1e-4,
-      clipRatio:           0.2,
-      targetKL:            0.01,
-      netArch:             { pi: [64,64], vf: [64,64] },
-      verbose:             1
-    });
-
-    const chunkSize = 1; // this.agent.config.nSteps;
-    for (let ep = 1; ep <= this.params.episodes && this.training; ep++) {
-      if (!this.training) break;
-      await this.agent.learn({ 
-        totalTimesteps: chunkSize,
-      });
-      if (ep % 1000 === 0) {
-        console.log(`🟢 Starting episode ${ep}/${this.params.episodes}`);
-        console.log(`✅ Finished episode ${ep}/${this.params.episodes}`);
+  setupKeyboardControls() {
+    document.addEventListener('keydown', (event) => {
+      if (event.target.tagName === 'INPUT') return;
+      
+      switch(event.key) {
+        case 'ArrowUp':
+          this.simulation.ctrl[this.selectedJoint] = Math.min(
+            this.simulation.ctrl[this.selectedJoint] + this.jointSpeed,
+            this.model.actuator_ctrlrange[this.selectedJoint * 2 + 1]
+          );
+          event.preventDefault();
+          break;
+        case 'ArrowDown':
+          this.simulation.ctrl[this.selectedJoint] = Math.max(
+            this.simulation.ctrl[this.selectedJoint] - this.jointSpeed,
+            this.model.actuator_ctrlrange[this.selectedJoint * 2]
+          );
+          event.preventDefault();
+          break;
+        case 'ArrowLeft':
+          this.selectedJoint = Math.max(0, this.selectedJoint - 1);
+          console.log(`Selected joint: ${this.selectedJoint}`);
+          event.preventDefault();
+          break;
+        case 'ArrowRight':
+          this.selectedJoint = Math.min(this.model.nu - 1, this.selectedJoint + 1);
+          console.log(`Selected joint: ${this.selectedJoint}`);
+          event.preventDefault();
+          break;
+        case 'r':
+        case 'R':
+          // Reset all controls to zero
+          for (let i = 0; i < this.model.nu; i++) {
+            this.simulation.ctrl[i] = 0;
+          }
+          console.log('Reset all controls to zero');
+          break;
+        case 'h':
+        case 'H':
+          // Home position (stand up for quadruped)
+          this.setHomePosition();
+          break;
       }
-      await new Promise(r => setTimeout(r, 20));
-    }
-
-    this.policy = this.agent.actor;
-    await this.policy.save('indexeddb://my-walk-policy');
-  
-    this.training = false;
+    });
   }
+
+  setHomePosition() {
+    // Set a reasonable standing position for quadrupeds
+    // These values work well for Unitree robots
+    const homePositions = {
+      "unitree_a1": [0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
+      "unitree_go1": [0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8, 0, 0.9, -1.8],
+      "humanoid": new Array(this.model.nu).fill(0),
+      "ant": new Array(this.model.nu).fill(0)
+    };
     
-  stopTraining() {
-    this.training = false;
+    const sceneName = this.params.scene.split('/')[0];
+    const positions = homePositions[sceneName] || new Array(this.model.nu).fill(0);
+    
+    for (let i = 0; i < Math.min(positions.length, this.model.nu); i++) {
+      this.simulation.ctrl[i] = positions[i];
+    }
+    console.log('Set home position');
   }
 
   onWindowResize() {
@@ -179,8 +198,22 @@ export class MuJoCoDemo {
       if (timeMS - this.mujoco_time > 35.0) { this.mujoco_time = timeMS; }
       while (this.mujoco_time < timeMS) {
 
+        // Apply control noise if enabled
+        if (this.params["ctrlnoisestd"] > 0.0) {
+          let rate  = Math.exp(-timestep / Math.max(1e-10, this.params["ctrlnoiserate"]));
+          let scale = this.params["ctrlnoisestd"] * Math.sqrt(1 - rate * rate);
+          let currentCtrl = this.simulation.ctrl;
+          for (let i = 0; i < currentCtrl.length; i++) {
+            currentCtrl[i] = rate * currentCtrl[i] + scale * standardNormal();
+            this.params["Actuator " + i] = currentCtrl[i];
+          }
+        }
+
         // Clear old perturbations, apply new ones.
-        for (let i = 0; i < this.simulation.qfrc_applied.length; i++) { this.simulation.qfrc_applied[i] = 0.0; }
+        for (let i = 0; i < this.simulation.qfrc_applied.length; i++) { 
+          this.simulation.qfrc_applied[i] = 0.0; 
+        }
+        
         let dragged = this.dragStateManager.physicsObject;
         if (dragged && dragged.bodyID) {
           for (let b = 0; b < this.model.nbody; b++) {
@@ -191,34 +224,10 @@ export class MuJoCoDemo {
             }
           }
           let bodyID = dragged.bodyID;
-          this.dragStateManager.update(); // Update the world-space force origin
+          this.dragStateManager.update();
           let force = toMujocoPos(this.dragStateManager.currentWorld.clone().sub(this.dragStateManager.worldHit).multiplyScalar(this.model.body_mass[bodyID] * 250));
           let point = toMujocoPos(this.dragStateManager.worldHit.clone());
           this.simulation.applyForce(force.x, force.y, force.z, 0, 0, 0, point.x, point.y, point.z, bodyID);
-
-          // TODO: Apply pose perturbations (mocap bodies only).
-        }
-
-        if (this.policy) {
-          const rawObs = [
-            ...Array.from(this.simulation.qpos),
-            ...Array.from(this.simulation.qvel)
-          ];
-          if (!rawObs.every(x => typeof x === 'number')) {
-            console.error('Got non-numeric observation:', rawObs);
-          } else {
-            const obsTensor = tf.tensor2d([rawObs]);
-
-            const actionTensor = this.policy.predict(obsTensor);
-            const action = actionTensor.dataSync();
-
-            for (let i = 0; i < action.length; i++) {
-              this.simulation.ctrl[i] = action[i];
-            }
-
-            obsTensor.dispose();
-            actionTensor.dispose();
-          }
         }
 
         this.simulation.step();
@@ -228,69 +237,30 @@ export class MuJoCoDemo {
       }
 
     } else if (this.params["paused"]) {
-      this.dragStateManager.update(); // Update the world-space force origin
+      this.dragStateManager.update();
       let dragged = this.dragStateManager.physicsObject;
       if (dragged && dragged.bodyID) {
         let b = dragged.bodyID;
-        getPosition  (this.simulation.xpos , b, this.tmpVec , false); // Get raw coordinate from MuJoCo
-        getQuaternion(this.simulation.xquat, b, this.tmpQuat, false); // Get raw coordinate from MuJoCo
+        getPosition  (this.simulation.xpos , b, this.tmpVec , false);
+        getQuaternion(this.simulation.xquat, b, this.tmpQuat, false);
 
         let offset = toMujocoPos(this.dragStateManager.currentWorld.clone()
           .sub(this.dragStateManager.worldHit).multiplyScalar(0.3));
         if (this.model.body_mocapid[b] >= 0) {
-          // Set the root body's mocap position...
-          console.log("Trying to move mocap body", b);
           let addr = this.model.body_mocapid[b] * 3;
           let pos  = this.simulation.mocap_pos;
           pos[addr+0] += offset.x;
           pos[addr+1] += offset.y;
           pos[addr+2] += offset.z;
         } else {
-          // Set the root body's position directly...
           let root = this.model.body_rootid[b];
           let addr = this.model.jnt_qposadr[this.model.body_jntadr[root]];
           let pos  = this.simulation.qpos;
           pos[addr+0] += offset.x;
           pos[addr+1] += offset.y;
           pos[addr+2] += offset.z;
-
-          //// Save the original root body position
-          //let x  = pos[addr + 0], y  = pos[addr + 1], z  = pos[addr + 2];
-          //let xq = pos[addr + 3], yq = pos[addr + 4], zq = pos[addr + 5], wq = pos[addr + 6];
-
-          //// Clear old perturbations, apply new ones.
-          //for (let i = 0; i < this.simulation.qfrc_applied().length; i++) { this.simulation.qfrc_applied()[i] = 0.0; }
-          //for (let bi = 0; bi < this.model.nbody(); bi++) {
-          //  if (this.bodies[b]) {
-          //    getPosition  (this.simulation.xpos (), bi, this.bodies[bi].position);
-          //    getQuaternion(this.simulation.xquat(), bi, this.bodies[bi].quaternion);
-          //    this.bodies[bi].updateWorldMatrix();
-          //  }
-          //}
-          ////dragStateManager.update(); // Update the world-space force origin
-          //let force = toMujocoPos(this.dragStateManager.currentWorld.clone()
-          //  .sub(this.dragStateManager.worldHit).multiplyScalar(this.model.body_mass()[b] * 0.01));
-          //let point = toMujocoPos(this.dragStateManager.worldHit.clone());
-          //// This force is dumped into xrfc_applied
-          //this.simulation.applyForce(force.x, force.y, force.z, 0, 0, 0, point.x, point.y, point.z, b);
-          //this.simulation.integratePos(this.simulation.qpos(), this.simulation.qfrc_applied(), 1);
-
-          //// Add extra drag to the root body
-          //pos[addr + 0] = x  + (pos[addr + 0] - x ) * 0.1;
-          //pos[addr + 1] = y  + (pos[addr + 1] - y ) * 0.1;
-          //pos[addr + 2] = z  + (pos[addr + 2] - z ) * 0.1;
-          //pos[addr + 3] = xq + (pos[addr + 3] - xq) * 0.1;
-          //pos[addr + 4] = yq + (pos[addr + 4] - yq) * 0.1;
-          //pos[addr + 5] = zq + (pos[addr + 5] - zq) * 0.1;
-          //pos[addr + 6] = wq + (pos[addr + 6] - wq) * 0.1;
-
-
         }
       }
-
-      // this.simulation.forward();
-      
-      // this.renderer.render(this.scene, this.camera);
     }
 
     // Update body transforms.
@@ -343,7 +313,6 @@ export class MuJoCoDemo {
       this.mujocoRoot.spheres  .instanceMatrix.needsUpdate = true;
     }
 
-    // Render!
     this.renderer.render( this.scene, this.camera );
   }
 }

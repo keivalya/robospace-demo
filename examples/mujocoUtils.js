@@ -20,10 +20,11 @@ export function setupGUI(parentContext) {
   // Make sure we reset the camera when the scene is changed or reloaded.
   parentContext.updateGUICallbacks.length = 0;
   parentContext.updateGUICallbacks.push((model, simulation, params) => {
-    // TODO: Use free camera parameters from MuJoCo
     parentContext.camera.position.set(2.0, 1.7, 1.7);
     parentContext.controls.target.set(0, 0.7, 0);
-    parentContext.controls.update(); });
+    parentContext.controls.update(); 
+  });
+  
   // Add scene selection dropdown.
   let reload = reloadFunc.bind(parentContext);
   parentContext.gui.add(parentContext.params, 'scene', {
@@ -33,19 +34,13 @@ export function setupGUI(parentContext) {
     "Humanoid": "humanoid.xml",
     "Ant": "ant.xml",
   }).name('Robot Model').onChange((val) => {
+    parentContext.selectedJoint = 0;
     reload();
   });
 
-  let keyInnerHTML = '';
-  let actionInnerHTML = '';
-
   let simulationFolder = parentContext.gui.addFolder("Simulation");
+  
   // Add pause simulation checkbox.
-  // Parameters:
-  //  Under "Simulation" folder.
-  //  Name: "Pause Simulation".
-  //  When paused, a "pause" text in white is displayed in the top left corner.
-  //  Can also be triggered by pressing the spacebar.
   const pauseSimulation = simulationFolder.add(parentContext.params, 'paused').name('Pause Simulation');
   pauseSimulation.onChange((value) => {
     if (value) {
@@ -55,53 +50,83 @@ export function setupGUI(parentContext) {
       pausedText.style.left = '10px';
       pausedText.style.color = 'white';
       pausedText.style.font = 'normal 18px Arial';
-      pausedText.innerHTML = 'pause';
+      pausedText.innerHTML = 'paused';
+      pausedText.id = 'pausedText';
       parentContext.container.appendChild(pausedText);
     } else {
-      parentContext.container.removeChild(parentContext.container.lastChild);
+      const pausedText = document.getElementById('pausedText');
+      if (pausedText) {
+        parentContext.container.removeChild(pausedText);
+      }
     }
   });
+  
+  // Control noise parameters
+  simulationFolder.add(parentContext.params, 'ctrlnoiserate', 0.0, 2.0, 0.01).name('Control Noise Rate');
+  simulationFolder.add(parentContext.params, 'ctrlnoisestd', 0.0, 1.0, 0.01).name('Control Noise Std');
+  
+  simulationFolder.close();
+
+  // Add actuator controls
+  let actuatorFolder = parentContext.gui.addFolder("Actuators");
+  const addActuators = (model, simulation, params) => {
+    let act_range = model.actuator_ctrlrange;
+    let actuatorGUIs = [];
+    for (let i = 0; i < model.nu; i++) {
+      let name = "Actuator " + i;
+      parentContext.params[name] = 0.0;
+      let actuatorGUI = actuatorFolder.add(parentContext.params, name, act_range[2 * i], act_range[2 * i + 1], 0.01)
+        .name(name)
+        .listen();
+      actuatorGUIs.push(actuatorGUI);
+      actuatorGUI.onChange((value) => {
+        simulation.ctrl[i] = value;
+      });
+    }
+    return actuatorGUIs;
+  };
+  let actuatorGUIs = addActuators(parentContext.model, parentContext.simulation, parentContext.params);
+  parentContext.updateGUICallbacks.push((model, simulation, params) => {
+    for (let i = 0; i < actuatorGUIs.length; i++) {
+      actuatorGUIs[i].destroy();
+    }
+    actuatorGUIs = addActuators(model, simulation, parentContext.params);
+  });
+  actuatorFolder.open();
+
+  // Joint control settings
+  let controlFolder = parentContext.gui.addFolder("Joint Control");
+  controlFolder.add(parentContext, 'selectedJoint', 0, parentContext.model.nu - 1, 1).name('Selected Joint').listen();
+  controlFolder.add(parentContext, 'jointSpeed', 0.1, 2.0, 0.1).name('Control Speed');
+  controlFolder.open();
+
+  // Add help text
+  let helpFolder = parentContext.gui.addFolder("Keyboard Controls");
+  const helpText = {
+    message: `Arrow Up/Down: Control selected joint
+Arrow Left/Right: Select joint
+R: Reset all joints to zero
+H: Home position (stand)
+Space: Pause simulation
+Ctrl+A: Reset camera`
+  };
+  helpFolder.add(helpText, 'message').name('Keys');
+  helpFolder.open();
+
+  // Keyboard shortcuts
   document.addEventListener('keydown', (event) => {
     if (event.code === 'Space') {
       parentContext.params.paused = !parentContext.params.paused;
       pauseSimulation.setValue(parentContext.params.paused);
       event.preventDefault();
     }
-  });
-  actionInnerHTML += 'Play / Pause<br>';
-  keyInnerHTML += 'Space<br>';
-  simulationFolder.close();
-
-  // Add function that resets the camera to the default position.
-  // Can be triggered by pressing ctrl + A.
-  document.addEventListener('keydown', (event) => {
     if (event.ctrlKey && event.code === 'KeyA') {
-      // TODO: Use free camera parameters from MuJoCo
       parentContext.camera.position.set(2.0, 1.7, 1.7);
       parentContext.controls.target.set(0, 0.7, 0);
       parentContext.controls.update(); 
       event.preventDefault();
     }
   });
-  actionInnerHTML += 'Reset free camera<br>';
-  keyInnerHTML += 'Ctrl A<br>';
-
-  parentContext.params.algorithm = 'PPO';
-  parentContext.params.episodes  = 25000;
-  const trainFolder = parentContext.gui.addFolder('Training');
-  trainFolder
-    .add(parentContext.params, 'algorithm', ['PPO','SAC'])
-    .name('Algorithm');
-  trainFolder
-    .add(parentContext.params, 'episodes', 10000, 100000, 10000)
-    .name('Episodes');
-  trainFolder
-    .add({ start: () => parentContext.startTraining() }, 'start')
-    .name('Start');
-  trainFolder
-    .add({ stop:  () => parentContext.stopTraining()  }, 'stop')
-    .name('Stop');
-  trainFolder.open();
 
   parentContext.gui.open();
 }
