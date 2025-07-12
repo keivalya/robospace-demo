@@ -20,9 +20,11 @@ export function setupGUI(parentContext) {
   // Make sure we reset the camera when the scene is changed or reloaded.
   parentContext.updateGUICallbacks.length = 0;
   parentContext.updateGUICallbacks.push((model, simulation, params) => {
-    parentContext.camera.position.set(2.0, 1.7, 1.7);
-    parentContext.controls.target.set(0, 0.7, 0);
-    parentContext.controls.update(); 
+    if (!parentContext.params.followCamera) {
+      parentContext.camera.position.set(2.0, 1.7, 1.7);
+      parentContext.controls.target.set(0, 0.7, 0);
+      parentContext.controls.update();
+    }
   });
   
   // Add scene selection dropdown.
@@ -35,6 +37,8 @@ export function setupGUI(parentContext) {
     "Ant": "ant.xml",
   }).name('Robot Model').onChange((val) => {
     parentContext.selectedJoint = 0;
+    parentContext.datasetPlayback = false;
+    parentContext.params.currentDataset = 'none';
     reload();
   });
 
@@ -92,13 +96,79 @@ export function setupGUI(parentContext) {
     }
     actuatorGUIs = addActuators(model, simulation, parentContext.params);
   });
-  actuatorFolder.open();
+  actuatorFolder.close();
 
   // Joint control settings
   let controlFolder = parentContext.gui.addFolder("Joint Control");
   controlFolder.add(parentContext, 'selectedJoint', 0, parentContext.model.nu - 1, 1).name('Selected Joint').listen();
   controlFolder.add(parentContext, 'jointSpeed', 0.1, 2.0, 0.1).name('Control Speed');
-  controlFolder.open();
+  controlFolder.close();
+
+  // Dataset playback controls
+  let datasetFolder = parentContext.gui.addFolder("Dataset Playback");
+  
+  // Dataset selector
+  const datasetList = {
+    'None': 'none',
+    'Walk': 'walk',
+    'Run': 'run',
+    'Squat': 'squat'
+  };
+  
+  datasetFolder.add(parentContext.params, 'currentDataset', datasetList)
+    .name('Select Dataset')
+    .onChange(async (value) => {
+      await parentContext.switchDataset(value);
+    });
+  
+  datasetFolder.add(parentContext.params, 'playbackSpeed', 0.1, 2.0, 0.05).name('Playback Speed');
+  
+  // Camera controls
+  let cameraFolder = datasetFolder.addFolder("Camera Following");
+  cameraFolder.add(parentContext.params, 'followCamera').name('Follow Robot').listen();
+  cameraFolder.add(parentContext.params, 'cameraDistance', 1.0, 5.0, 0.1).name('Distance');
+  cameraFolder.add(parentContext.params, 'cameraHeight', 0.5, 3.0, 0.1).name('Height');
+  cameraFolder.open();
+  
+  // Dataset info display
+  const datasetInfo = {
+    status: () => {
+      if (parentContext.params.currentDataset === 'none') return 'No dataset selected';
+      const dataset = parentContext.datasets[parentContext.params.currentDataset];
+      if (!dataset.loaded) return 'Not loaded';
+      if (parentContext.datasetPlayback) return 'Playing';
+      return 'Ready';
+    },
+    frames: () => {
+      if (parentContext.params.currentDataset === 'none') return 0;
+      const dataset = parentContext.datasets[parentContext.params.currentDataset];
+      return dataset.qpos ? dataset.qpos.shape[0] : 0;
+    },
+    currentFrame: () => {
+      return Math.floor(parentContext.datasetFrameNumber);
+    }
+  };
+  
+  const statusController = datasetFolder.add(datasetInfo, 'status').name('Status').disable().listen();
+  const framesController = datasetFolder.add(datasetInfo, 'frames').name('Total Frames').disable().listen();
+  const currentFrameController = datasetFolder.add(datasetInfo, 'currentFrame').name('Current Frame').disable().listen();
+  
+  // Update dataset info display
+  setInterval(() => {
+    statusController.updateDisplay();
+    framesController.updateDisplay();
+    currentFrameController.updateDisplay();
+  }, 100);
+  
+  datasetFolder.add({
+    reset: () => {
+      parentContext.datasetFrameNumber = 0;
+      parentContext.lastDatasetUpdate = 0;
+      console.log('Dataset playback reset');
+    }
+  }, 'reset').name('Reset Playback');
+  
+  datasetFolder.open();
 
   // Add help text
   let helpFolder = parentContext.gui.addFolder("Keyboard Controls");
@@ -106,7 +176,8 @@ export function setupGUI(parentContext) {
     message: `Arrow Up/Down: Control selected joint
 Arrow Left/Right: Select joint
 R: Reset all joints to zero
-H: Home position (stand)
+H: Home position
+F: Toggle camera follow
 Space: Pause simulation
 Ctrl+A: Reset camera`
   };
@@ -121,6 +192,7 @@ Ctrl+A: Reset camera`
       event.preventDefault();
     }
     if (event.ctrlKey && event.code === 'KeyA') {
+      parentContext.params.followCamera = false;
       parentContext.camera.position.set(2.0, 1.7, 1.7);
       parentContext.controls.target.set(0, 0.7, 0);
       parentContext.controls.update(); 
