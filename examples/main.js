@@ -2,7 +2,7 @@ import * as THREE           from 'three';
 import { GUI              } from '../node_modules/three/examples/jsm/libs/lil-gui.module.min.js';
 import { OrbitControls    } from '../node_modules/three/examples/jsm/controls/OrbitControls.js';
 import { DragStateManager } from './utils/DragStateManager.js';
-import { setupGUI, downloadExampleScenesFolder, loadSceneFromURL, getPosition, getQuaternion, toMujocoPos, standardNormal } from './mujocoUtils.js';
+import { setupGUI, downloadExampleScenesFolder, loadSceneFromURL, getPosition, getQuaternion, toMujocoPos } from './mujocoUtils.js';
 import   load_mujoco        from '../dist/mujoco_wasm.js';
 import npyjs from './utils/npy.js';
 
@@ -38,8 +38,6 @@ export class MuJoCoDemo {
       scene: initialScene, 
       paused: false, 
       help: false,
-      ctrlnoiserate: 0.0,
-      ctrlnoisestd: 0.0,
       playbackSpeed: 1.0,
       currentDataset: 'none',
       followCamera: true,
@@ -61,7 +59,8 @@ export class MuJoCoDemo {
       'none': null,
       'walk': { qpos: null, qvel: null, loaded: false },
       'run': { qpos: null, qvel: null, loaded: false },
-      'squat': { qpos: null, qvel: null, loaded: false }
+      'squat': { qpos: null, qvel: null, loaded: false },
+      'highjump': { qpos: null, qvel: null, loaded: false }
     };
     this.datasetPlayback = false;
     this.datasetFrameNumber = 0;
@@ -131,7 +130,7 @@ export class MuJoCoDemo {
 
   async preloadDatasets() {
     console.log("Preloading datasets...");
-    const datasetNames = ['walk', 'run', 'squat'];
+    const datasetNames = ['walk', 'run', 'squat', 'highjump'];
     
     for (const name of datasetNames) {
       try {
@@ -366,16 +365,6 @@ export class MuJoCoDemo {
           }
         } else {
           // Normal simulation mode with control
-          if (this.params["ctrlnoisestd"] > 0.0) {
-            let rate  = Math.exp(-timestep / Math.max(1e-10, this.params["ctrlnoiserate"]));
-            let scale = this.params["ctrlnoisestd"] * Math.sqrt(1 - rate * rate);
-            let currentCtrl = this.simulation.ctrl;
-            for (let i = 0; i < currentCtrl.length; i++) {
-              currentCtrl[i] = rate * currentCtrl[i] + scale * standardNormal();
-              this.params["Actuator " + i] = currentCtrl[i];
-            }
-          }
-
           // Clear old perturbations
           for (let i = 0; i < this.simulation.qfrc_applied.length; i++) { 
             this.simulation.qfrc_applied[i] = 0.0; 

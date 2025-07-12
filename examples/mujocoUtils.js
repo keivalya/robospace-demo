@@ -65,10 +65,6 @@ export function setupGUI(parentContext) {
     }
   });
   
-  // Control noise parameters
-  simulationFolder.add(parentContext.params, 'ctrlnoiserate', 0.0, 2.0, 0.01).name('Control Noise Rate');
-  simulationFolder.add(parentContext.params, 'ctrlnoisestd', 0.0, 1.0, 0.01).name('Control Noise Std');
-  
   simulationFolder.close();
 
   // Add actuator controls
