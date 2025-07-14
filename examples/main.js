@@ -1,3 +1,4 @@
+// main.js
 import * as THREE           from 'three';
 import { GUI              } from '../node_modules/three/examples/jsm/libs/lil-gui.module.min.js';
 import { OrbitControls    } from '../node_modules/three/examples/jsm/controls/OrbitControls.js';
@@ -5,6 +6,7 @@ import { DragStateManager } from './utils/DragStateManager.js';
 import { setupGUI, downloadExampleScenesFolder, loadSceneFromURL, getPosition, getQuaternion, toMujocoPos } from './mujocoUtils.js';
 import   load_mujoco        from '../dist/mujoco_wasm.js';
 import npyjs from './utils/npy.js';
+import { FileUploadManager } from './utils/FileUploadManager.js';  // ADD THIS LINE
 
 // Load the MuJoCo Module
 const mujoco = await load_mujoco();
@@ -112,6 +114,9 @@ export class MuJoCoDemo {
     // Initialize the Drag State Manager.
     this.dragStateManager = new DragStateManager(this.scene, this.renderer, this.camera, this.container.parentElement, this.controls);
     
+    // Initialize file upload manager - ADD THIS LINE
+    this.fileUploadManager = new FileUploadManager(mujoco, this);
+    
     // Setup keyboard controls
     this.setupKeyboardControls();
   }
@@ -124,8 +129,48 @@ export class MuJoCoDemo {
     this.gui = new GUI();
     setupGUI(this);
 
+    // Create upload interface - ADD THIS LINE
+    this.fileUploadManager.createUploadInterface();
+
     // Try to preload all datasets
     await this.preloadDatasets();
+  }
+
+  // ADD THIS METHOD - Reload function for scene changes
+  async reloadFunc() {
+    this.scene.remove(this.scene.getObjectByName("MuJoCo Root"));
+    
+    // Check if it's a custom uploaded scene
+    const isCustomScene = this.params.scene.startsWith('custom_scenes/');
+    
+    try {
+      [this.model, this.state, this.simulation, this.bodies, this.lights] =
+        await loadSceneFromURL(this.mujoco, this.params.scene, this);
+      
+      this.simulation.forward();
+      
+      for (let i = 0; i < this.updateGUICallbacks.length; i++) {
+        this.updateGUICallbacks[i](this.model, this.simulation, this.params);
+      }
+      
+      this.agent = null;
+      this.policy = null;
+      
+      // Reset dataset playback for custom scenes
+      if (isCustomScene) {
+        this.datasetPlayback = false;
+        this.params.currentDataset = 'none';
+        this.selectedJoint = 0;
+      }
+      
+    } catch (error) {
+      console.error('Error loading scene:', error);
+      alert(`Failed to load scene: ${error.message}\n\nMake sure all referenced files (robot XML and assets) are uploaded.`);
+      
+      // Revert to default scene on error
+      this.params.scene = "unitree_h1/scene.xml";
+      await this.reloadFunc();
+    }
   }
 
   async preloadDatasets() {

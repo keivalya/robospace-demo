@@ -1,17 +1,39 @@
+// mujocoUtils.js
 import * as THREE from 'three';
 import { Reflector  } from './utils/Reflector.js';
 import { MuJoCoDemo } from './main.js';
 
 export async function reloadFunc() {
   this.scene.remove(this.scene.getObjectByName("MuJoCo Root"));
-  [this.model, this.state, this.simulation, this.bodies, this.lights] =
-    await loadSceneFromURL(this.mujoco, this.params.scene, this);
-  this.simulation.forward();
-  for (let i = 0; i < this.updateGUICallbacks.length; i++) {
-    this.updateGUICallbacks[i](this.model, this.simulation, this.params);
+  const isCustomRobot = this.params.scene.startsWith('custom_robots/');
+  try {
+    [this.model, this.state, this.simulation, this.bodies, this.lights] =
+      await loadSceneFromURL(this.mujoco, this.params.scene, this);
+    
+    this.simulation.forward();
+    
+    for (let i = 0; i < this.updateGUICallbacks.length; i++) {
+      this.updateGUICallbacks[i](this.model, this.simulation, this.params);
+    }
+    
+    this.agent = null;
+    this.policy = null;
+    
+    // Reset dataset playback for custom robots
+    if (isCustomRobot) {
+      this.datasetPlayback = false;
+      this.params.currentDataset = 'none';
+      this.selectedJoint = 0;
+    }
+    
+  } catch (error) {
+    console.error('Error loading scene:', error);
+    alert(`Failed to load robot: ${error.message}\n\nMake sure all referenced asset files are uploaded.`);
+    
+    // Revert to default scene on error
+    this.params.scene = "unitree_h1/scene.xml";
+    await this.reloadFunc();
   }
-  this.agent  = null;
-  this.policy = null;
 }
 
 /** @param {MuJoCoDemo} parentContext*/
@@ -28,7 +50,7 @@ export function setupGUI(parentContext) {
   });
   
   // Add scene selection dropdown.
-  let reload = reloadFunc.bind(parentContext);
+  let reload = parentContext.reloadFunc.bind(parentContext);
   parentContext.gui.add(parentContext.params, 'scene', {
     // "Unitree A1": "unitree_a1/scene.xml",
     "Unitree H1": "unitree_h1/scene.xml",

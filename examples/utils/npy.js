@@ -1,3 +1,4 @@
+// npy.js
 class npyjs {
 
     constructor(opts) {
