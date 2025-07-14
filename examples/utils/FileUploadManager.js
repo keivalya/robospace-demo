@@ -459,9 +459,10 @@ export class FileUploadManager {
       
       // Update UI to show we have a scene
       const uploadButton = document.querySelector('.upload-button');
-      const newSceneButton = document.querySelector('.new-scene-button');
-      if (uploadButton) uploadButton.textContent = 'Add More Files';
-      if (newSceneButton) newSceneButton.style.display = 'inline-block';
+      // const newSceneButton = document.querySelector('.new-scene-button');
+      // if (uploadButton) uploadButton.textContent = 'Add More Files';
+      if (uploadButton) uploadButton.style.display = 'none';
+      // if (newSceneButton) newSceneButton.style.display = 'inline-block';
       
       const totalRefs = references.includes.length + references.assets.length;
       if (totalRefs > 0) {
