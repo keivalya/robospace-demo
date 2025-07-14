@@ -90,37 +90,37 @@ export function setupGUI(parentContext) {
   simulationFolder.close();
 
   // Add actuator controls
-  let actuatorFolder = parentContext.gui.addFolder("Actuators");
-  const addActuators = (model, simulation, params) => {
-    let act_range = model.actuator_ctrlrange;
-    let actuatorGUIs = [];
-    for (let i = 0; i < model.nu; i++) {
-      let name = "Actuator " + i;
-      parentContext.params[name] = 0.0;
-      let actuatorGUI = actuatorFolder.add(parentContext.params, name, act_range[2 * i], act_range[2 * i + 1], 0.01)
-        .name(name)
-        .listen();
-      actuatorGUIs.push(actuatorGUI);
-      actuatorGUI.onChange((value) => {
-        simulation.ctrl[i] = value;
-      });
-    }
-    return actuatorGUIs;
-  };
-  let actuatorGUIs = addActuators(parentContext.model, parentContext.simulation, parentContext.params);
-  parentContext.updateGUICallbacks.push((model, simulation, params) => {
-    for (let i = 0; i < actuatorGUIs.length; i++) {
-      actuatorGUIs[i].destroy();
-    }
-    actuatorGUIs = addActuators(model, simulation, parentContext.params);
-  });
-  actuatorFolder.close();
+  // let actuatorFolder = parentContext.gui.addFolder("Actuators");
+  // const addActuators = (model, simulation, params) => {
+  //   let act_range = model.actuator_ctrlrange;
+  //   let actuatorGUIs = [];
+  //   for (let i = 0; i < model.nu; i++) {
+  //     let name = "Actuator " + i;
+  //     parentContext.params[name] = 0.0;
+  //     let actuatorGUI = actuatorFolder.add(parentContext.params, name, act_range[2 * i], act_range[2 * i + 1], 0.01)
+  //       .name(name)
+  //       .listen();
+  //     actuatorGUIs.push(actuatorGUI);
+  //     actuatorGUI.onChange((value) => {
+  //       simulation.ctrl[i] = value;
+  //     });
+  //   }
+  //   return actuatorGUIs;
+  // };
+  // let actuatorGUIs = addActuators(parentContext.model, parentContext.simulation, parentContext.params);
+  // parentContext.updateGUICallbacks.push((model, simulation, params) => {
+  //   for (let i = 0; i < actuatorGUIs.length; i++) {
+  //     actuatorGUIs[i].destroy();
+  //   }
+  //   actuatorGUIs = addActuators(model, simulation, parentContext.params);
+  // });
+  // actuatorFolder.close();
 
   // Joint control settings
-  let controlFolder = parentContext.gui.addFolder("Joint Control");
-  controlFolder.add(parentContext, 'selectedJoint', 0, parentContext.model.nu - 1, 1).name('Selected Joint').listen();
-  controlFolder.add(parentContext, 'jointSpeed', 0.1, 2.0, 0.1).name('Control Speed');
-  controlFolder.close();
+  // let controlFolder = parentContext.gui.addFolder("Joint Control");
+  // controlFolder.add(parentContext, 'selectedJoint', 0, parentContext.model.nu - 1, 1).name('Selected Joint').listen();
+  // controlFolder.add(parentContext, 'jointSpeed', 0.1, 2.0, 0.1).name('Control Speed');
+  // controlFolder.close();
 
   // Dataset playback controls
   let datasetFolder = parentContext.gui.addFolder("Dataset Playback");
@@ -167,40 +167,40 @@ export function setupGUI(parentContext) {
     }
   };
   
-  const statusController = datasetFolder.add(datasetInfo, 'status').name('Status').disable().listen();
-  const framesController = datasetFolder.add(datasetInfo, 'frames').name('Total Frames').disable().listen();
-  const currentFrameController = datasetFolder.add(datasetInfo, 'currentFrame').name('Current Frame').disable().listen();
+  // const statusController = datasetFolder.add(datasetInfo, 'status').name('Status').disable().listen();
+  // const framesController = datasetFolder.add(datasetInfo, 'frames').name('Total Frames').disable().listen();
+  // const currentFrameController = datasetFolder.add(datasetInfo, 'currentFrame').name('Current Frame').disable().listen();
   
   // Update dataset info display
   setInterval(() => {
-    statusController.updateDisplay();
-    framesController.updateDisplay();
-    currentFrameController.updateDisplay();
+    // statusController.updateDisplay();
+    // framesController.updateDisplay();
+    // currentFrameController.updateDisplay();
   }, 100);
   
-  datasetFolder.add({
-    reset: () => {
-      parentContext.datasetFrameNumber = 0;
-      parentContext.lastDatasetUpdate = 0;
-      console.log('Dataset playback reset');
-    }
-  }, 'reset').name('Reset Playback');
+  // datasetFolder.add({
+  //   reset: () => {
+  //     parentContext.datasetFrameNumber = 0;
+  //     parentContext.lastDatasetUpdate = 0;
+  //     console.log('Dataset playback reset');
+  //   }
+  // }, 'reset').name('Reset Playback');
   
-  datasetFolder.open();
+  // datasetFolder.open();
 
   // Add help text
-  let helpFolder = parentContext.gui.addFolder("Keyboard Controls");
-  const helpText = {
-    message: `Arrow Up/Down: Control selected joint
-Arrow Left/Right: Select joint
-R: Reset all joints to zero
-H: Home position
-F: Toggle camera follow
-Space: Pause simulation
-Ctrl+A: Reset camera`
-  };
-  helpFolder.add(helpText, 'message').name('Keys');
-  helpFolder.open();
+//   let helpFolder = parentContext.gui.addFolder("Keyboard Controls");
+//   const helpText = {
+//     message: `Arrow Up/Down: Control selected joint
+// Arrow Left/Right: Select joint
+// R: Reset all joints to zero
+// H: Home position
+// F: Toggle camera follow
+// Space: Pause simulation
+// Ctrl+A: Reset camera`
+//   };
+//   helpFolder.add(helpText, 'message').name('Keys');
+//   helpFolder.open();
 
   // Keyboard shortcuts
   document.addEventListener('keydown', (event) => {
