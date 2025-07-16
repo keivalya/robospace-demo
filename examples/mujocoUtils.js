@@ -52,9 +52,9 @@ export function setupGUI(parentContext) {
   // Add scene selection dropdown.
   let reload = parentContext.reloadFunc.bind(parentContext);
   parentContext.gui.add(parentContext.params, 'scene', {
-    // "Unitree A1": "unitree_a1/scene.xml",
     "Unitree H1": "unitree_h1/scene.xml",
-    // "Unitree Go1": "unitree_go1/scene.xml",
+    "Unitree A1": "unitree_a1/scene.xml",
+    "Unitree Go1": "unitree_go1/scene.xml",
     // "Humanoid": "humanoid.xml",
     // "Ant": "ant.xml",
   }).name('Robot Model').onChange((val) => {
